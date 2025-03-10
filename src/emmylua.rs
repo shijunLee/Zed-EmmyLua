@@ -1,7 +1,7 @@
 use std::fs;
 use zed::lsp::CompletionKind;
 use zed::{CodeLabel, CodeLabelSpan, LanguageServerId};
-use zed_extension_api::{self as zed, Result};
+use zed_extension_api::{self as zed, serde_json,settings::LspSettings, Result};
 
 struct EmmyLuaExtension {
     cached_binary_path: Option<String>,
@@ -36,7 +36,7 @@ impl EmmyLuaExtension {
         )?;
 
         let (platform, arch) = zed::current_platform();
-        let asset_name = format!(
+        let mut asset_name = format!(
             "emmylua_ls-{os}-{arch}.{extension}",
             os = match platform {
                 zed::Os::Mac => "darwin",
@@ -53,7 +53,9 @@ impl EmmyLuaExtension {
                 zed::Os::Windows => "zip",
             },
         );
-
+        if platform == zed::Os::Linux && arch == zed::Architecture::Aarch64 {
+            asset_name = format!( "emmylua_ls-{os}-{arch}.{extension}",os = "linux",arch = "aarch64-glibc.2.17",extension = "tar.gz");
+        }
         let asset = release
             .assets
             .iter()
@@ -118,7 +120,17 @@ impl zed::Extension for EmmyLuaExtension {
             env: Default::default(),
         })
     }
-
+    fn language_server_initialization_options(
+        &mut self,
+        language_server_id: &LanguageServerId,
+        worktree: &zed::Worktree,
+    ) -> Result<Option<serde_json::Value>> {
+        let settings = LspSettings::for_worktree(language_server_id.as_ref(), worktree)
+            .ok()
+            .and_then(|lsp_settings| lsp_settings.initialization_options.clone())
+            .unwrap_or_default();
+        Ok(Some(settings))
+    }
     fn label_for_completion(
         &self,
         _language_server_id: &LanguageServerId,
